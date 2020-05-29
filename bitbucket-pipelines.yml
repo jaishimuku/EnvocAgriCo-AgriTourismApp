@@ -1,0 +1,45 @@
+image: selu383envoc/383build
+
+pipelines:
+  default:
+    - step:
+        name: "Build/Test"
+        script:
+          - docker run -e "ACCEPT_EULA=Y" -e "SA_PASSWORD=Password123!" -p 1433:1433 -d "mcr.microsoft.com/mssql/server:2019-CU1-ubuntu-16.04"
+          - dotnet test SP20.P05.Tests
+        services:
+          - docker
+  branches:
+    master:
+      - step:
+          name: "Build/Test/Publish"
+          script: 
+            - docker run -e "ACCEPT_EULA=Y" -e "SA_PASSWORD=Password123!" -p 1433:1433 -d "mcr.microsoft.com/mssql/server:2019-CU1-ubuntu-16.04"
+            - dotnet test SP20.P05.Tests
+            - dotnet publish SP20.P05.Web --output publish
+            - cd publish && zip -r web-$BITBUCKET_BUILD_NUMBER.zip .
+          services:
+            - docker
+          artifacts: 
+            - publish/*.zip
+      - step:
+          name: "Deploy to Azure"
+          deployment: test
+          script:
+            - pipe: microsoft/azure-web-apps-deploy:1.0.0
+              variables:
+                AZURE_APP_ID: $AZURE_APP_ID
+                AZURE_PASSWORD: $AZURE_PASSWORD
+                AZURE_TENANT_ID: $AZURE_TENANT_ID
+                AZURE_RESOURCE_GROUP: "sp20-p05-g08"
+                AZURE_APP_NAME: "selu383-sp20-p05-g08"
+                ZIP_FILE: "publish/web-$BITBUCKET_BUILD_NUMBER.zip"
+      - step:
+          name: "Check Health"
+          script: 
+            - curl -sSf https://selu383-sp20-p05-g08.azurewebsites.net/swagger/v1/swagger.json
+
+definitions:
+  services:
+    docker:
+      memory: 2048
